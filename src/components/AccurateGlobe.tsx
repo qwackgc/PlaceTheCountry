@@ -148,6 +148,15 @@ const AccurateGlobe: React.FC = () => {
     return 'rgba(0, 0, 0, 0)'
   }, [])
 
+  // Border outline color for countries
+  const getPolygonStrokeColor = useCallback((polygon: any) => {
+    const country = polygon as CountryFeature
+    // White/light border for clear country shapes
+    if (selectedCountry === country) return '#ffffff'
+    if (hoveredCountry === country) return '#ffffff'
+    return 'rgba(255, 255, 255, 0.3)'
+  }, [selectedCountry, hoveredCountry])
+
   // Custom label for countries
   const getPolygonLabel = useCallback((polygon: any) => {
     const country = polygon as CountryFeature
@@ -231,6 +240,7 @@ const AccurateGlobe: React.FC = () => {
         polygonAltitude={getPolygonAltitude}
         polygonCapColor={getPolygonCapColor}
         polygonSideColor={getPolygonSideColor}
+        polygonStrokeColor={getPolygonStrokeColor}
         polygonLabel={getPolygonLabel}
         
         // Interactions
