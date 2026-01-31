@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react'
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import Globe from 'react-globe.gl'
 import * as THREE from 'three'
 import { feature } from 'topojson-client'
@@ -16,9 +16,28 @@ interface CountryFeature {
   geometry: any
 }
 
-
-
-
+// Color palette for countries - diverse, distinct colors
+const COUNTRY_COLORS = [
+  '#49ac8f', // Shopify green
+  '#5fb399', // Light green
+  '#4a90a4', // Ocean blue
+  '#6fa86f', // Forest green
+  '#8fb3d9', // Light blue
+  '#7c9a92', // Sage
+  '#a3c4bc', // Mint
+  '#b8d4be', // Pale green
+  '#90be6d', // Lime
+  '#43aa8b', // Teal
+  '#577590', // Navy
+  '#6d597a', // Purple
+  '#b56576', // Rose
+  '#e09f3e', // Gold
+  '#9b5de5', // Violet
+  '#00bbf9', // Cyan
+  '#fee440', // Yellow
+  '#f15bb5', // Pink
+  '#00f5d4', // Aquamarine
+]
 
 const AccurateGlobe: React.FC = () => {
   const globeEl = useRef<any>()
@@ -28,16 +47,27 @@ const AccurateGlobe: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Load country data
+  // Get a consistent color for each country based on ISO code
+  const getCountryColor = useCallback((country: CountryFeature) => {
+    const isoCode = country.properties?.ISO_A2 || country.properties?.ISO_A3 || 'XX'
+    let hash = 0
+    for (let i = 0; i < isoCode.length; i++) {
+      hash = isoCode.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    const colorIndex = Math.abs(hash) % COUNTRY_COLORS.length
+    return COUNTRY_COLORS[colorIndex]
+  }, [])
+
+  // Load country data - using 50m resolution for better coastal detail
   useEffect(() => {
     const loadCountryData = async () => {
       try {
         setIsLoading(true)
         setError(null)
         
-        // Load Natural Earth country boundaries (110m resolution)
-        // Using the same data source as the react-globe.gl example
-        const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+        // Using 50m resolution for better coastal and state-level detail
+        // This provides ~10x more detail than 110m resolution
+        const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json')
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }
@@ -70,7 +100,7 @@ const AccurateGlobe: React.FC = () => {
     
     // Set up auto-rotation
     globe.controls().autoRotate = true
-    globe.controls().autoRotateSpeed = 0.5
+    globe.controls().autoRotateSpeed = 0.3
     
     // Set initial camera position for optimal viewing
     setTimeout(() => {
@@ -78,7 +108,7 @@ const AccurateGlobe: React.FC = () => {
         { 
           lat: 20, 
           lng: 0, 
-          altitude: 2.5 
+          altitude: 2.0 
         }, 
         1000
       )
@@ -95,16 +125,6 @@ const AccurateGlobe: React.FC = () => {
   const handleCountryClick = useCallback((polygon: any) => {
     const country = polygon as CountryFeature
     setSelectedCountry(country)
-    
-    // Zoom into selected country - use a simple approximation
-    // In production, you'd calculate the actual centroid from the geometry
-    if (globeEl.current && country.properties?.NAME) {
-      globeEl.current.pointOfView({
-        lat: 20, // Default to a nice viewing angle
-        lng: 0,
-        altitude: 1.5
-      }, 1000)
-    }
   }, [])
 
   // Handle country hover
@@ -113,51 +133,33 @@ const AccurateGlobe: React.FC = () => {
     setHoveredCountry(country)
   }, [])
 
-  // Country polygon styling functions
+  // Country polygon styling
   const getPolygonAltitude = useCallback((polygon: any) => {
     const country = polygon as CountryFeature
-    // Base altitude with slight elevation for all countries
     let altitude = 0.01
-    
-    // Higher altitude for selected country
-    if (selectedCountry === country) {
-      altitude = 0.05
-    }
-    // Slight elevation for hovered country
-    else if (hoveredCountry === country) {
-      altitude = 0.02
-    }
-    
+    if (selectedCountry === country) altitude = 0.05
+    else if (hoveredCountry === country) altitude = 0.02
     return altitude
   }, [selectedCountry, hoveredCountry])
 
   const getPolygonCapColor = useCallback((polygon: any) => {
     const country = polygon as CountryFeature
-    // Shopify-inspired color scheme
-    const baseColor = '#49ac8f' // Shopify green
-    const selectedColor = '#5fb399' // Lighter green for selected
-    const hoveredColor = '#66c0a8' // Even lighter for hover
-    
-    if (selectedCountry === country) return selectedColor
-    if (hoveredCountry === country) return hoveredColor
-    return baseColor
-  }, [selectedCountry, hoveredCountry])
+    if (selectedCountry === country) return '#ffd700' // Gold
+    if (hoveredCountry === country) return '#ffffff' // White
+    return getCountryColor(country)
+  }, [selectedCountry, hoveredCountry, getCountryColor])
 
   const getPolygonSideColor = useCallback(() => {
-    // Transparent sides for clean look
     return 'rgba(0, 0, 0, 0)'
   }, [])
 
-  // Border outline color for countries
   const getPolygonStrokeColor = useCallback((polygon: any) => {
     const country = polygon as CountryFeature
-    // White/light border for clear country shapes
-    if (selectedCountry === country) return '#ffffff'
-    if (hoveredCountry === country) return '#ffffff'
-    return 'rgba(255, 255, 255, 0.3)'
+    if (selectedCountry === country) return '#ffd700' // Gold
+    if (hoveredCountry === country) return '#ffffff' // White
+    return 'rgba(255, 255, 255, 0.5)' // Distinct white border
   }, [selectedCountry, hoveredCountry])
 
-  // Custom label for countries
   const getPolygonLabel = useCallback((polygon: any) => {
     const country = polygon as CountryFeature
     if (!country.properties) return ''
@@ -168,24 +170,28 @@ const AccurateGlobe: React.FC = () => {
     
     return `
       <div style="
-        background: rgba(0, 0, 0, 0.8);
+        background: rgba(0, 0, 0, 0.85);
         color: white;
-        padding: 8px 12px;
-        border-radius: 4px;
-        font-size: 12px;
+        padding: 10px 14px;
+        border-radius: 6px;
+        font-size: 13px;
         border: 1px solid rgba(255, 255, 255, 0.2);
-        backdrop-filter: blur(4px);
+        backdrop-filter: blur(6px);
+        min-width: 160px;
       ">
-        <div style="font-weight: bold; margin-bottom: 4px;">${name} ${iso2 ? `(${iso2})` : ''}</div>
-        ${population ? `<div>Population: ${(population / 1_000_000).toFixed(1)}M</div>` : ''}
-        ${selectedCountry === country ? '<div style="color: #5fb399;">✓ Selected</div>' : ''}
+        <div style="font-weight: bold; font-size: 15px; margin-bottom: 6px; color: ${getCountryColor(country)};">
+          ${name}
+        </div>
+        ${iso2 ? `<div style="opacity: 0.8;">ISO: ${iso2}</div>` : ''}
+        ${population ? `<div style="opacity: 0.8;">Population: ${(population / 1_000_000).toFixed(1)}M</div>` : ''}
+        ${selectedCountry === country ? '<div style="color: #ffd700; margin-top: 6px;">✓ Selected</div>' : ''}
       </div>
     `
-  }, [selectedCountry])
+  }, [selectedCountry, getCountryColor])
 
-  // Custom globe material for Shopify-style appearance
+  // Custom globe material
   const globeMaterial = new THREE.MeshPhongMaterial({
-    color: '#1a2033', // Deep blue base
+    color: '#1a2033',
     opacity: 0.95,
     transparent: true,
     shininess: 10
@@ -199,7 +205,8 @@ const AccurateGlobe: React.FC = () => {
         justifyContent: 'center', 
         height: '100vh',
         fontSize: '18px',
-        background: '#08070e'
+        background: '#08070e',
+        color: '#5fb399'
       }}>
         Loading globe data...
       </div>
@@ -226,16 +233,12 @@ const AccurateGlobe: React.FC = () => {
     <div className="accurate-globe-container">
       <Globe
         ref={globeEl}
-        // Globe appearance
         globeImageUrl="//cdn.jsdelivr.net/npm/three-globe/example/img/earth-dark.jpg"
         backgroundColor="#08070e"
         globeMaterial={globeMaterial}
-        
-        // Atmosphere effects
         atmosphereColor="#5784a7"
         atmosphereAltitude={0.5}
         
-        // Country polygons
         polygonsData={countries}
         polygonAltitude={getPolygonAltitude}
         polygonCapColor={getPolygonCapColor}
@@ -243,20 +246,16 @@ const AccurateGlobe: React.FC = () => {
         polygonStrokeColor={getPolygonStrokeColor}
         polygonLabel={getPolygonLabel}
         
-        // Interactions
         onPolygonClick={handleCountryClick}
         onPolygonHover={handleCountryHover}
         
-        // Animation and transitions
         polygonsTransitionDuration={300}
         
-        // Renderer configuration for better quality
         rendererConfig={{
           antialias: true,
           alpha: true
         }}
         
-        // Performance optimizations
         animateIn={true}
       />
       
@@ -273,7 +272,7 @@ const AccurateGlobe: React.FC = () => {
           backdropFilter: 'blur(10px)',
           maxWidth: '250px'
         }}>
-          <h3 style={{ margin: '0 0 10px 0', color: '#5fb399' }}>
+          <h3 style={{ margin: '0 0 10px 0', color: '#ffd700' }}>
             {selectedCountry.properties.ADMIN || selectedCountry.properties.NAME}
           </h3>
           <div style={{ fontSize: '14px', lineHeight: '1.4' }}>
